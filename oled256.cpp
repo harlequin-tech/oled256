@@ -23,6 +23,11 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/**
+ * @file oled256 256x64x16 OLED display driver
+ */
+
+
 #include <SPI.h>
 #include <oled256.h>
 
@@ -146,6 +151,9 @@ void oled256::begin(uint8_t font)
     init();
 }
 
+/**
+ * Initialise the OLED hardware and get it ready for use.
+ */
 void oled256::init()
 {
 
@@ -210,6 +218,10 @@ void oled256::init()
     writeCommand(CMD_SET_DISPLAY_ON);
 }
 
+/**
+ * Write a command or register address to the display
+ * @param reg - the command or register to write
+ */
 void oled256::writeCommand(uint8_t reg)
 {
     pinLow(port_cs, pin_cs);
@@ -218,6 +230,10 @@ void oled256::writeCommand(uint8_t reg)
     pinHigh(port_cs, pin_cs);
 }
 
+/**
+ * Write a byte of data to the display
+ * @param data - data to write
+ */
 void oled256::writeData(uint8_t data)
 {
     pinLow(port_cs, pin_cs);
@@ -226,6 +242,11 @@ void oled256::writeData(uint8_t data)
     pinHigh(port_cs, pin_cs);
 }
 
+/**
+ * Set the current pixel data column start and end address
+ * @param start - start column
+ * @param end - end column
+ */
 void oled256::setColumnAddr(uint8_t start, uint8_t end)
 {
     writeCommand(CMD_SET_COLUMN_ADDR);
@@ -233,6 +254,11 @@ void oled256::setColumnAddr(uint8_t start, uint8_t end)
     writeData(end);
 }
 
+/**
+ * Set the current pixel data row start and end address
+ * @param start - start row
+ * @param end - end row
+ */
 void oled256::setRowAddr(uint8_t start, uint8_t end)
 {
     writeCommand(CMD_SET_ROW_ADDR);
@@ -240,6 +266,14 @@ void oled256::setRowAddr(uint8_t start, uint8_t end)
     writeData(end);
 }
 
+/**
+ * Set the current pixel data window.
+ * Data writes will update only this section of the display.
+ * @param x - start row
+ * @param y - start column
+ * @param xend - end row
+ * @param yend - end column
+ */
 void oled256::setWindow(uint8_t x, uint8_t y, uint8_t xend, uint8_t yend)
 {
     setColumnAddr(MIN_SEG + x / 4, MIN_SEG + xend / 4);
@@ -250,6 +284,11 @@ void oled256::setWindow(uint8_t x, uint8_t y, uint8_t xend, uint8_t yend)
     end_y = yend;
 }
 
+/**
+ * Set the display pixel row offset.  Can be used to scroll the display.
+ * Effectively moves y=0 to the offset y row.  The display wraps around to y=63.
+ * @param offset - set y origin to this offset
+ */
 void oled256::setOffset(uint8_t offset)
 {
     writeCommand(CMD_SET_DISPLAY_OFFSET);
@@ -257,6 +296,10 @@ void oled256::setOffset(uint8_t offset)
     _offset = offset;
 }
 
+/**
+ * Get the current display offset (y origin).
+ * @returns current y offset
+ */
 uint8_t oled256::getOffset(void)
 {
     return _offset;
@@ -277,8 +320,12 @@ uint8_t oled256::getBufHeight(void)
     return _bufHeight;
 }
 
-#define CMD_SET_DISPLAY_OFFSET		0xA2
 
+/**
+ * Fill the display with the specified colour by setting
+ * every pixel to the colour.
+ * @param colour - fill the display with this colour.
+ */
 void oled256::fill(uint8_t colour)
 {
     uint8_t x,y;
@@ -298,11 +345,17 @@ void oled256::fill(uint8_t colour)
     delay(1);
 }
 
+/**
+ * Clear the display by setting every pixel to the background colour.
+ */
 void oled256::clear()
 {
     fill(background);
 }
 
+/**
+ * Reset the OLED display.
+ */
 void oled256::reset()
 {
     digitalWrite(_reset,LOW);
@@ -311,6 +364,12 @@ void oled256::reset()
     delay(10);
 }
 
+
+/**
+ * Return the width of the specified character in the current font.
+ * @param ch - return the width of this character
+ * @returns width of the glyph
+ */
 uint8_t oled256::glyphWidth(char ch)
 {
     uint8_t glyph_width=0;
@@ -335,13 +394,25 @@ uint8_t oled256::glyphWidth(char ch)
     return glyph_width;
 }
 
+/**
+ * Return the height of the current font. All characters in a font are the same height.
+ * @returns height of the glyph font
+ */
 uint8_t oled256::glyphHeight()
 {
     return pgm_read_byte(&fonts[_font].glyph_height);
 }
 
-/*
- * @returns width of glyph
+/**
+ * Draw a character glyph on the screen at x,y.
+ * @param x - x position to start glyph (x=0 for left, x=256-glyphWidth() for right)
+ * @param y - y position to start glyph (y=0 for top, y=64-glyphHeight() for bottom)
+ * @param ch - the character to draw
+ * @param colour - foreground colour
+ * @param bg - background colour
+ * @returns width of the glyph
+ * @note currently only works with fixed width glyphs due to display buffer used
+ *       to determine the adjacent glyph when updating a shared cell (two pixels per byte)
  */
 uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uint16_t bg)
 {
@@ -442,11 +513,24 @@ void LcdDisplay::begin(uint8_t cols, uint8_t rows, uint8_t font)
     _rows = rows;
 }
 
+
+/**
+ * Set the character cursor location on the LCD.
+ * @param x - character column, ordered left to right
+ * @param y - character row, ordered top to bottom
+ */
 void LcdDisplay::setCursor(int16_t x, int16_t y)
 {
     setXY(x * glyphWidth('0'), y * glyphHeight());
 }
 
+
+/**
+ * Define a custom 8 by 8 character.
+ * Characters 0 through 6 can be defined.
+ * @param ch - character to define
+ * @param data - pointer an 8-byte array defining the character pattern
+ */
 void LcdDisplay::createChar(uint8_t ch_id, uint8_t *data)
 {
     if (ch_id > 7) 
@@ -458,6 +542,15 @@ void LcdDisplay::createChar(uint8_t ch_id, uint8_t *data)
 }
 
 
+/**
+ * Write a character to the display and move the cursor to the next
+ * character location.
+ * If the cursor reaches the end of the row, move it to the start of
+ * the next row.
+ * @param ch - character to write
+ * @returns number of characters written (Print class compatible)
+ * @note this is used to support all of the inherited Print class methods.
+ */
 size_t LcdDisplay::write(uint8_t ch)
 {
     if (ch > 7) {
