@@ -6,10 +6,10 @@
 #undef EN_SIX_DOT
 #undef EN_SEVEN_DOT
 #define EN_NINE_DOT
-#undef EN_TEN_DOT
+#define EN_TEN_DOT
 #undef EN_FIFTEEN_DOT
 #undef EN_EIGHTEEN_DOT
-#undef EN_FONT_MT1
+#define EN_FONT_MT1
 
 /* define number labels for the font selections */
 typedef enum
@@ -53,14 +53,14 @@ struct FONT_DEF
 {
    uint8_t store_width;            /* glyph storage width in bytes */
    uint8_t glyph_height;  		 /* glyph height for storage */
-   uint8_t const *glyph_table;      /* font table start address in memory */
+   const uint8_t *glyph_table;      /* font table start address in memory */
    uint8_t fixed_width;            /* fixed width of glyphs. If zero */
                                          /* then use the width table. */
-   uint8_t *width_table; 	 /* variable width table start adress */
+   const uint8_t *width_table; 	 /* variable width table start adress */
    uint8_t glyph_beg;			 	 /* start ascii offset in table */
    uint8_t glyph_end;				 /* end ascii offset in table */
    uint8_t glyph_def;				 /*  for undefined glyph  */
-   uint8_t *map;		/* ascii map */
+   const uint8_t *map;		/* ascii map */
 };
 
 /* font definition tables for the fonts */

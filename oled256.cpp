@@ -29,7 +29,7 @@
 
 
 #include <SPI.h>
-#include <oled256.h>
+#include <oled256mp.h>
 
 #include <avr/pgmspace.h>
 /* Work around a bug with PROGMEM and PSTR where the compiler always
@@ -149,6 +149,11 @@ void oled256::begin(uint8_t font)
 
     reset();
     init();
+
+    for (uint8_t ind=0; ind<LCDHEIGHT; ind++) {
+	gddram[ind].xaddr = 0;
+	gddram[ind].pixels = 0;
+    }
 }
 
 /**
@@ -322,6 +327,15 @@ uint8_t oled256::getBufHeight(void)
 
 
 /**
+ * Set the font to use
+ * @param font - new font to use
+ */
+void oled256::setFont(uint8_t font)
+{
+    _font = font;
+}
+
+/**
  * Fill the display with the specified colour by setting
  * every pixel to the colour.
  * @param colour - fill the display with this colour.
@@ -351,6 +365,11 @@ void oled256::fill(uint8_t colour)
 void oled256::clear()
 {
     fill(background);
+
+    for (uint8_t ind=0; ind<LCDHEIGHT; ind++) {
+	gddram[ind].xaddr = 0;
+	gddram[ind].pixels = 0;
+    }
 }
 
 /**
@@ -423,6 +442,10 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
     uint16_t glyph_width;
     uint16_t glyph_height;
     uint16_t glyph_byte_width;
+
+    char origCh = ch;
+
+
     if (colour == bg) {
 	bg = 0;
     }
@@ -450,28 +473,12 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
     glyph_height = pgm_read_byte(&fonts[_font].glyph_height);
     glyph_byte_width = pgm_read_byte(&fonts[_font].store_width);
 
-    uint8_t scratch[glyph_height][glyph_byte_width];
-
-    /* fill scratch */
-    if (((cur_x & 0x3) == 0) || (cur_col == 0)) {
-	/* nothing to the left */
-	for (ind=0; ind<glyph_height; ind++) {
-	    scratch[ind][0] = 0;
-	}
-    } else {
-	/* Get existing glyph column */
-	char lchar = display[cur_col - 1][cur_row];
-	glyph = (uint8_t *)pgm_read_word(&fonts[_font].glyph_table) + lchar * glyph_byte_width * glyph_height;
-	for (uint16_t yind=0; yind<glyph_height; yind++) {
-	    scratch[ind][0] = pgm_read_byte(&glyph[yind*glyph_byte_width + glyph_byte_width-1]);
-	}
-    }
-
     glyph = (uint8_t *)pgm_read_word(&fonts[_font].glyph_table) + ch * glyph_byte_width * glyph_height;
 
     setWindow(x, y, x+glyph_width-1, y+glyph_height-1);
     writeCommand(CMD_WRITE_RAM);
 
+    // load pixel data
     for (uint16_t yind=0; yind<glyph_height; yind++) {
 	ind = (uint8_t)(yind*glyph_byte_width);
 	switch (glyph_byte_width) {
@@ -489,14 +496,37 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
 		break;
 	}
 
-	// Only works for fixed width, multiple of 4 in size...
-	for (pix=0; pix<glyph_width; pix+=2) {
-	    uint8_t seg;
-	    seg = (bits & 0x80000000) ? colour << 4 : bg << 4;
-	    seg |= (bits & 0x40000000) ? colour : bg;
-	    bits <<= 2;
-	    writeData(seg);
+	uint16_t pixels;
+
+	// check for shared pixel data to the left
+	if ((x/4) == gddram[yind].xaddr) {
+	    // overlap
+	    pixels = gddram[yind].pixels;	// 4 pixels
+	} else {
+	    pixels = 0;
 	}
+
+	// Merge with existing pixel data
+	uint8_t xoff = x - (x/4)*4;
+
+	// build pixels
+	for (pix=0; pix<glyph_width+xoff; pix+=4) {
+	    for (uint8_t pind=0; pind<4; pind++) {
+		if ((pind+pix) >= xoff) {
+		    uint16_t mask = ~(0x000F << ((3-pind)*4));
+		    pixels &= ~(0x000F << ((3-pind)*4));
+
+		    if ((pind+pix) < (glyph_width+xoff)) {
+			pixels |= ((bits & 0x80000000L) ? colour : bg) << ((3-pind)*4);
+			bits <<= 1;
+		    }
+		}
+	    }
+	    writeData((uint8_t)(pixels >> 8));
+	    writeData((uint8_t)pixels);
+	}
+	gddram[yind].pixels = pixels;
+	gddram[yind].xaddr = (x+glyph_width) / 4;
     }
 
     return (uint8_t)glyph_width;

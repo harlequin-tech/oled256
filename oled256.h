@@ -157,7 +157,10 @@ public:
     uint8_t _offset;
     uint8_t _bufHeight;
 
-    uint8_t display[LCD_CHAR_COLS][LCD_CHAR_ROWS];
+    struct {
+	uint8_t xaddr;
+	uint16_t pixels;
+    } gddram[LCDHEIGHT];
 
     uint8_t readByte();
     void writeByte(uint8_t data);
