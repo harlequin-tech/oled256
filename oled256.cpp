@@ -29,7 +29,7 @@
 
 
 #include <SPI.h>
-#include <oled256mp.h>
+#include <oled256.h>
 
 #include <avr/pgmspace.h>
 /* Work around a bug with PROGMEM and PSTR where the compiler always
@@ -443,9 +443,6 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
     uint16_t glyph_height;
     uint16_t glyph_byte_width;
 
-    char origCh = ch;
-
-
     if (colour == bg) {
 	bg = 0;
     }
@@ -513,7 +510,6 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
 	for (pix=0; pix<glyph_width+xoff; pix+=4) {
 	    for (uint8_t pind=0; pind<4; pind++) {
 		if ((pind+pix) >= xoff) {
-		    uint16_t mask = ~(0x000F << ((3-pind)*4));
 		    pixels &= ~(0x000F << ((3-pind)*4));
 
 		    if ((pind+pix) < (glyph_width+xoff)) {
@@ -530,6 +526,47 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
     }
 
     return (uint8_t)glyph_width;
+}
+
+
+void oled256::bitmapDraw(uint8_t x, uint8_t y, uint8_t width, uint8_t height, const uint16_t *image)
+{
+    setWindow(x, y, x+width-1, y+height-1);
+    writeCommand(CMD_WRITE_RAM);
+
+    uint8_t xoff = x - (x / 4) * 4;
+    uint16_t pixels;
+    uint8_t xind;
+    uint8_t byteWidth = (width+3)/4;
+
+    if (xoff == 0) {
+	for (uint8_t yind=0; yind < height; yind++) {
+	    for (xind=0; xind < byteWidth; xind++) {
+		pixels = (uint16_t)pgm_read_byte(&image[yind*byteWidth+xind]) | pgm_read_byte((uint8_t *)&image[yind*byteWidth+xind]+1) << 8;
+		writeData((uint8_t)(pixels >> 8));
+		writeData((uint8_t)pixels);
+	    }
+	    gddram[yind].pixels = pixels;
+	    gddram[yind].xaddr = xind-1;
+	}
+    } else {
+	// XXX not ready
+	for (uint8_t yind=0; yind < height; yind++) {
+	    if ((x/4) == gddram[yind].xaddr) {
+		pixels = gddram[yind].pixels;	// 4 pixels
+	    } else {
+		pixels = 0;
+	    }
+
+	    for (xind=0; xind < byteWidth; xind ++) {
+		pixels = (uint16_t)pgm_read_byte(&image[yind*byteWidth+xind]) | pgm_read_byte((uint8_t *)&image[yind*byteWidth+xind]+1) << 8;
+		writeData((uint8_t)(pixels >> 8));
+		writeData((uint8_t)pixels);
+	    }
+	    gddram[yind].pixels = pixels;
+	    gddram[yind].xaddr = xind-1;
+	}
+    }
 }
 
 LcdDisplay::LcdDisplay(const uint8_t cs, const uint8_t dc, const uint8_t reset) : oled256(cs, dc, reset) {

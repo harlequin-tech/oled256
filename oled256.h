@@ -116,6 +116,8 @@ public:
     void clear();
     void reset();
 
+    void bitmapDraw(uint8_t x, uint8_t y, uint8_t width, uint8_t height, const uint16_t *image);
+
     void setWindow(uint8_t x, uint8_t y, uint8_t xend, uint8_t yend);
     void setFont(uint8_t font);
     void setColour(uint8_t colour);
