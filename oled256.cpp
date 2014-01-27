@@ -27,6 +27,7 @@
  * @file oled256 256x64x16 OLED display driver
  */
 
+#undef DEBUG
 
 #include <SPI.h>
 #include <oled256.h>
@@ -49,7 +50,6 @@
 #define OLED_WIDTH 256
 #define OLED_HEIGHT 64
 
-
 oled256::oled256(const uint8_t cs, const uint8_t dc, const uint8_t reset)
 {
     _cs = cs;
@@ -64,6 +64,8 @@ oled256::oled256(const uint8_t cs, const uint8_t dc, const uint8_t reset)
     wrap = true;
     _offset = 0;
     _bufHeight = LCDHEIGHT;
+    _fontHQ = NULL;
+    debug = false;
 }
 
 void oled256::setColour(uint8_t colour)
@@ -84,6 +86,13 @@ void oled256::setContrast(uint8_t contrast)
 
 size_t oled256::write(uint8_t ch)
 {
+#ifdef DEBUG
+    Serial.println();
+    Serial.print(F("write: cur_x, cur_y = "));
+    Serial.print(cur_x);
+    Serial.print(',');
+    Serial.println(cur_y);
+#endif
     if (ch == '\n') {
 	cur_y += glyphHeight();
 	cur_x = 0;
@@ -91,7 +100,15 @@ size_t oled256::write(uint8_t ch)
 	// skip em
     } else {
 	uint8_t width = glyphWidth(ch);
+#ifdef DEBUG
+	Serial.print(F("write: glyphWidth = "));
+	Serial.println(width);
+#endif
 	if (wrap && ((cur_x + width) > OLED_WIDTH)) {
+#ifdef DEBUG
+	    Serial.print(F("write: wrapping at "));
+	    Serial.println(cur_x + width);
+#endif
 	    cur_y += glyphHeight();
 	    cur_x = 0;
 	}
@@ -245,6 +262,11 @@ void oled256::writeData(uint8_t data)
     pinHigh(port_dc, pin_dc);
     SPI.transfer(data);
     pinHigh(port_cs, pin_cs);
+    if (debug) {
+	Serial.print(F("writeData(0x"));
+	Serial.print(data,HEX);
+	Serial.println(')');
+    }
 }
 
 /**
@@ -283,10 +305,25 @@ void oled256::setWindow(uint8_t x, uint8_t y, uint8_t xend, uint8_t yend)
 {
     setColumnAddr(MIN_SEG + x / 4, MIN_SEG + xend / 4);
     setRowAddr(y, yend);
-    cur_x = x;
+    //cur_x = x;
     end_x = xend;
-    cur_y = y;
+    //cur_y = y;
     end_y = yend;
+#ifdef DEBUG
+    Serial.print(F("setWindow("));
+    Serial.print(x);
+    Serial.print(',');
+    Serial.print(y);
+    Serial.print(',');
+    Serial.print(xend);
+    Serial.print(',');
+    Serial.print(xend);
+    Serial.println(')');
+    Serial.print(F("window column "));
+    Serial.print(x/4);
+    Serial.print(F(" to "));
+    Serial.println(xend/4);
+#endif
 }
 
 /**
@@ -333,6 +370,16 @@ uint8_t oled256::getBufHeight(void)
 void oled256::setFont(uint8_t font)
 {
     _font = font;
+    _fontHQ = NULL;
+}
+
+/**
+ * Set the font to use
+ * @param font - new font to use
+ */
+void oled256::setFontHQ(uint8_t font)
+{
+    _fontHQ = &fontsHQ[font];
 }
 
 /**
@@ -391,26 +438,36 @@ void oled256::reset()
  */
 uint8_t oled256::glyphWidth(char ch)
 {
-    uint8_t glyph_width=0;
-
-    if ((ch < pgm_read_byte(&fonts[_font].glyph_beg)) || (ch > pgm_read_byte(&fonts[_font].glyph_end))) {
-	uint8_t *map = (uint8_t *)pgm_read_word(&fonts[_font].map);
-	if (map != 0) {
-	    ch = pgm_read_byte(&map[(uint8_t)ch]);
-	} else {
-	    ch = pgm_read_byte(&fonts[_font].glyph_def);
+    if (_fontHQ == NULL) {
+	uint8_t glyph_width=0;
+	if ((ch < pgm_read_byte(&fonts[_font].glyph_beg)) || (ch > pgm_read_byte(&fonts[_font].glyph_end))) {
+	    uint8_t *map = (uint8_t *)pgm_read_word(&fonts[_font].map);
+	    if (map != 0) {
+		ch = pgm_read_byte(&map[(uint8_t)ch]);
+	    } else {
+		ch = pgm_read_byte(&fonts[_font].glyph_def);
+	    }
 	}
+
+	/* make zero based index into the font data arrays */
+	ch -= pgm_read_byte(&fonts[_font].glyph_beg);
+	glyph_width = pgm_read_byte(&fonts[_font].fixed_width);	/* check if it is a fixed width */
+	if (glyph_width == 0) {
+	    uint8_t *width_table = (uint8_t *)pgm_read_word(&fonts[_font].width_table);	/* get the variable width instead */
+	    glyph_width = pgm_read_byte(&width_table[(uint8_t)ch]);	/* get the variable width instead */
+	}
+	return glyph_width;
+    } else {
+	uint8_t gind;
+	if (ch >= ' ' && ch <= 0x7f) {
+	    gind = pgm_read_byte(&_fontHQ->map[ch - ' ']);
+	} else {
+	    // default to a space
+	    gind = 0;
+	}
+	return (uint8_t)pgm_read_byte(&(_fontHQ->glyphs[gind].width));
     }
 
-    /* make zero based index into the font data arrays */
-    ch -= pgm_read_byte(&fonts[_font].glyph_beg);
-    glyph_width = pgm_read_byte(&fonts[_font].fixed_width);	/* check if it is a fixed width */
-    if (glyph_width == 0) {
-	uint8_t *width_table = (uint8_t *)pgm_read_word(&fonts[_font].width_table);	/* get the variable width instead */
-	glyph_width = pgm_read_byte(&width_table[(uint8_t)ch]);	/* get the variable width instead */
-    }
-
-    return glyph_width;
 }
 
 /**
@@ -419,7 +476,11 @@ uint8_t oled256::glyphWidth(char ch)
  */
 uint8_t oled256::glyphHeight()
 {
-    return pgm_read_byte(&fonts[_font].glyph_height);
+    if (_fontHQ == NULL) {
+	return pgm_read_byte(&fonts[_font].glyph_height);
+    } else {
+	return _fontHQ->height;
+    }
 }
 
 /**
@@ -435,6 +496,10 @@ uint8_t oled256::glyphHeight()
  */
 uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uint16_t bg)
 {
+    if (_fontHQ != NULL) {
+	return glyphDrawHQ(x,y,ch,colour,bg);
+    }
+
     uint8_t pix;
     uint32_t bits=0xAA55AA55;
     int ind;
@@ -526,6 +591,191 @@ uint8_t oled256::glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uin
     }
 
     return (uint8_t)glyph_width;
+}
+
+/**
+ * Draw a character glyph on the screen at x,y.
+ * @param x - x position to start glyph (x=0 for left, x=256-glyphWidth() for right)
+ * @param y - y position to start glyph (y=0 for top, y=64-glyphHeight() for bottom)
+ * @param ch - the character to draw
+ * @param colour - foreground colour
+ * @param bg - background colour
+ * @returns width of the glyph
+ * @note currently only works with fixed width glyphs due to display buffer used
+ *       to determine the adjacent glyph when updating a shared cell (two pixels per byte)
+ */
+uint8_t oled256::glyphDrawHQ(int16_t x, int16_t y, char ch, uint16_t colour, uint16_t bg)
+{
+    uint8_t pix;
+    int ind;
+    const uint8_t *glyph;
+    uint8_t glyph_width;
+    uint8_t glyph_height;
+    int8_t glyph_offset;
+    uint8_t gind;
+    uint8_t byteWidth=0;
+
+    if (_fontHQ == NULL) {
+	return 0;
+    }
+
+    if (colour == bg) {
+	bg = 0;
+    }
+
+#ifdef DEBUG
+    debug = true;
+#endif
+
+    // get glyph index
+    if (ch >= ' ' && ch <= 0x7f) {
+	gind = pgm_read_byte(&_fontHQ->map[ch - ' ']);
+    } else {
+	// default to a space
+	gind = 0;
+    }
+
+    glyph = (const uint8_t *)pgm_read_word(&_fontHQ->glyphs[gind].glyph);
+
+    if (glyph == NULL) {
+	// space character, just fill in the gddram buffer and output background pixels
+	glyph_width = (uint8_t)pgm_read_byte(&(_fontHQ->glyphs[gind].width));
+	glyph_height = _fontHQ->height;
+	glyph_offset = 0;
+    } else {
+	glyph_width = (uint8_t)pgm_read_byte(&(_fontHQ->glyphs[gind].xrect));
+	glyph_height = (uint8_t)pgm_read_byte(&(_fontHQ->glyphs[gind].yrect));
+	glyph_offset = (int8_t)pgm_read_byte(&(_fontHQ->glyphs[gind].xoffset));
+	x += glyph_offset;
+	y += (int8_t) pgm_read_byte(&(_fontHQ->glyphs[gind].yoffset));
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+    }
+
+    uint8_t xoff = x & 0x3;
+
+#ifdef DEBUG
+    Serial.print(F("glyph '"));
+    Serial.print(ch);
+    Serial.print(F("' "));
+    Serial.print(gind,HEX);
+    Serial.print(F(" height ")); Serial.print(glyph_height);
+    Serial.print(F(", width ")); Serial.print(glyph_width);
+    Serial.print(F(", xoff ")); Serial.println(xoff);
+#endif
+
+    byteWidth = (x+glyph_width-1)/4 - (x/4) + 1;
+#ifdef DEBUG
+    Serial.print(F("window (x,y,xend,yend) = ")); 
+    Serial.print(x);
+    Serial.print(',');
+    Serial.print(y);
+    Serial.print(',');
+    Serial.print(x+glyph_width-1);
+    Serial.print(',');
+    Serial.print(y+glyph_height-1);
+    Serial.print(F(", byteWidth = ")); 
+    Serial.println(byteWidth);
+#endif
+
+    setWindow(x, y, x+glyph_width-1, y+glyph_height-1);
+
+    writeCommand(CMD_WRITE_RAM);
+
+    // build pixel gddramdata
+    for (uint16_t yind=0; yind<glyph_height; yind++) {
+	ind = (uint8_t)(yind*glyph_width);
+	uint16_t pixels;
+	// check for shared pixel data to the left
+	if ((x/4) == gddram[y+yind].xaddr) {
+	    // overlap
+#ifdef DEBUG
+	    Serial.print(F("gddram.pixels = 0x"));
+	    Serial.println(gddram[y+yind].pixels,HEX);
+#endif
+	    pixels = gddram[y+yind].pixels >> ((3-xoff)*4);	// 4 pixels
+	} else {
+	    pixels = 0;
+	}
+
+	// write a pixel row
+	uint8_t pind=0;
+	uint8_t byteCount = byteWidth;
+	for (pix=0; pix<glyph_width; pix+=4) {
+	    for (pind=0; pind<4; pind++) {
+		pixels &= 0xFFF0;
+		if (pix+pind < glyph_width) {
+		    uint8_t pixel = glyph ? pgm_read_byte(glyph++) : 0;
+#ifdef DEBUG
+		    Serial.print(F("    ")); Serial.print(pix+pind);
+		    Serial.print(F(" pixel 0x"));
+		    Serial.print(pixel,HEX);
+		    Serial.print(' ');
+		    Serial.print(pixels,HEX);
+		    Serial.print(F(" -> "));
+#endif
+		    pixels |= pixel;
+#ifdef DEBUG
+		    Serial.println(pixels,HEX);
+#endif
+		}
+		if (pind == (3-xoff)) {
+#ifdef DEBUG
+		    Serial.print(F("    ")); Serial.print(yind); Serial.print('.');
+		    Serial.print(pix+pind/4); Serial.print(F(" = 0x")); Serial.println(pixels,HEX);
+#endif
+		    writeData((uint8_t)(pixels >> 8));
+		    writeData((uint8_t)pixels);
+		    byteCount--;
+		} else {
+		    pixels <<= 4;
+		}
+	    }
+	}
+
+	if (byteCount != 0) {
+	    // write final pixels
+#ifdef DEBUG
+	    Serial.print(F("  F ")); Serial.print(yind); Serial.print('.');
+	    Serial.print(pix+pind/4); Serial.print(F(" = 0x")); Serial.print(pixels,HEX);
+	    Serial.print(F(" pind=")); Serial.print(pind); 
+	    Serial.print(F(" xoff=")); Serial.println(xoff); 
+#endif
+	    pixels <<= (3-xoff)*4;
+	    writeData((uint8_t)(pixels >> 8));
+	    writeData((uint8_t)pixels);
+	}
+
+	// Include blank spacing pixel 
+	//pixels <<= 4;
+
+	if ((x+glyph_width) & 0x3) {
+#ifdef DEBUG
+	    Serial.print(F("gddram ind "));
+	    Serial.println(x+glyph_width);
+#endif
+	    gddram[y+yind].pixels = pixels;
+	} else {
+	    // rolled over 
+	    gddram[y+yind].pixels = 0;
+	}
+	gddram[y+yind].xaddr = (x+glyph_width) / 4;
+#ifdef DEBUG
+	Serial.print(F("gddram["));
+	Serial.print(yind);
+	Serial.print(F("] = "));
+	Serial.print(gddram[y+yind].xaddr);
+	Serial.print(F(", 0x"));
+	Serial.println(gddram[y+yind].pixels,HEX);
+#endif
+    }
+
+#ifdef DEBUG
+    debug = false;
+#endif
+
+    return (uint8_t)(glyph_width + glyph_offset) + 1;
+    //return (uint8_t)pgm_read_byte(&(_fontHQ->glyphs[gind].width));
 }
 
 

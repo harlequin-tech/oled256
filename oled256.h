@@ -29,6 +29,7 @@
 #include "Arduino.h"
 #include "Print.h"
 #include "fonts.h"
+#include "fontHQ.h"
 
 /**************************************************
 *    LM320Y-256064 (SSD1322 driver)
@@ -120,6 +121,7 @@ public:
 
     void setWindow(uint8_t x, uint8_t y, uint8_t xend, uint8_t yend);
     void setFont(uint8_t font);
+    void setFontHQ(uint8_t font);
     void setColour(uint8_t colour);
     void setContrast(uint8_t contrast);
     void setBackground(uint8_t colour);
@@ -129,9 +131,12 @@ public:
     uint8_t getBufHeight(void);
 
     void setXY(uint8_t col, uint8_t row);
-    uint8_t glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uint16_t bg);
+
     uint8_t glyphWidth(char ch);
     uint8_t glyphHeight();
+    uint8_t glyphDraw(uint16_t x, uint16_t y, char ch, uint16_t colour, uint16_t bg);
+
+    uint8_t glyphDrawHQ(int16_t x, int16_t y, char ch, uint16_t colour, uint16_t bg);
 
     virtual size_t write(uint8_t ch);
     virtual size_t write(const char *buf);
@@ -168,6 +173,8 @@ public:
     void writeByte(uint8_t data);
 
     uint8_t _font;
+    font_t *_fontHQ;
+    bool debug;
 };
 
 class LcdDisplay : public oled256 {
