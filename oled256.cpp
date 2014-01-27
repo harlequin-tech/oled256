@@ -800,19 +800,27 @@ void oled256::bitmapDraw(uint8_t x, uint8_t y, uint8_t width, uint8_t height, co
 	    gddram[yind].xaddr = xind-1;
 	}
     } else {
-	// XXX not ready
 	for (uint8_t yind=0; yind < height; yind++) {
+
 	    if ((x/4) == gddram[yind].xaddr) {
-		pixels = gddram[yind].pixels;	// 4 pixels
+		// get the existing pixel data to handle the overlap
+		pixels = gddram[yind].pixels;
 	    } else {
 		pixels = 0;
 	    }
 
+	    uint16_t imagePixels;
 	    for (xind=0; xind < byteWidth; xind ++) {
-		pixels = (uint16_t)pgm_read_byte(&image[yind*byteWidth+xind]) | pgm_read_byte((uint8_t *)&image[yind*byteWidth+xind]+1) << 8;
+		// image is offset in gddram, so need to merge it with the previous pixel data
+		imagePixels = (uint16_t)pgm_read_byte(&image[yind*byteWidth+xind]) | pgm_read_byte((uint8_t *)&image[yind*byteWidth+xind]+1) << 8;
+
+		pixels |= imagePixels >> (4-xoff) * 4;
 		writeData((uint8_t)(pixels >> 8));
 		writeData((uint8_t)pixels);
+		pixels = imagePixels << 4*xoff;
 	    }
+	    writeData((uint8_t)(pixels >> 8));
+	    writeData((uint8_t)pixels);
 	    gddram[yind].pixels = pixels;
 	    gddram[yind].xaddr = xind-1;
 	}
