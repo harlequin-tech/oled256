@@ -1,5 +1,7 @@
 /*
  * Font checkbook_14
+ *
+ * Allen R. Walden Friendly Fonts, free license.
  */
 
 #define CHECKBOOK_14_HEIGHT 19
