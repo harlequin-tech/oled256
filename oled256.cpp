@@ -406,6 +406,25 @@ void oled256::fill(uint8_t colour)
     delay(1);
 }
 
+
+/**
+ * Turn the display off
+ */
+void oled256::off(void)
+{
+    writeCommand(CMD_SET_DISPLAY_OFF);
+}
+
+
+/**
+ * Turn the display on
+ */
+void oled256::on(void)
+{
+    writeCommand(CMD_SET_DISPLAY_ON);
+}
+
+
 /**
  * Clear the display by setting every pixel to the background colour.
  */

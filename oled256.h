@@ -116,6 +116,8 @@ public:
     void fill(uint8_t colour);
     void clear();
     void reset();
+    void off();
+    void on();
 
     void bitmapDraw(uint8_t x, uint8_t y, uint8_t width, uint8_t height, const uint16_t *image);
 
